@@ -220,35 +220,37 @@ export default function Home() {
             return (
               <div
                 key={idx}
-                className="bg-neutral-900 rounded-2xl overflow-hidden shadow-lg flex flex-col"
+                className="bg-neutral-900 rounded-2xl overflow-hidden shadow-lg flex flex-col items-center p-4"
               >
-                {/* Poster (kept ~2:3, cropped to fill) */}
-                <img
-                  src={m.poster}
-                  alt={m.title}
-                  className="w-full h-[360px] object-cover"
-                />
+                {/* 海报，缩小到 70%，居中 */}
+                <div className="w-full aspect-[2/3] bg-black flex items-center justify-center">
+                  <img
+                    src={m.poster}
+                    alt={m.title}
+                    className="max-w-[100%] max-h-[100%] object-contain"
+                  />
+                </div>
 
-                {/* Info area */}
-                <div className="p-3 flex flex-col items-center justify-center">
-                  {/* Movie title – Nunito bold, friendly & legible */}
-                  <p className="text-center text-base font-extrabold leading-snug mb-1 text-ellipsis overflow-hidden">
+                {/* 信息区：海报下方 */}
+                <div className="mt-3 flex flex-col items-center justify-center text-center">
+                  {/* 标题 */}
+                  <p className="text-base font-extrabold leading-tight mb-1 break-words whitespace-normal">
                     {m.title}
                   </p>
 
-                  {/* Numeric TMDb rating for clarity */}
+                  {/* TMDb 评分 */}
                   <p className="text-white/70 text-xs mb-1">
                     {m.rating ? `TMDb: ${m.rating.toFixed(1)}/10` : "No rating"}
                   </p>
 
-                  {/* Stars mapped from rating (0–5) – Douban-green style */}
+                  {/* 星级 */}
                   <div className="flex justify-center space-x-1">
                     {[1, 2, 3, 4, 5].map((n) => (
                       <svg
                         key={n}
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 20 20"
-                        fill={n <= stars ? "#2DBD6E" : "gray"}
+                        fill={n <= Math.round(m.rating / 2) ? "#2DBD6E" : "gray"}
                         className="w-4 h-4"
                       >
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.785.57-1.84-.197-1.54-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
