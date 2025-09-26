@@ -2,35 +2,26 @@
 
 /**
  * Annual Movie Grid – Page
- *
- * What this file does:
- * - Renders a simple tool to generate a 3×3 movie poster grid
- * - Lets the user enter 9 movie titles, fetches real posters via our /api/search
- * - Converts TMDb vote_average (0–10) into 0–5 green stars
- * - Exports the whole grid (including big title) as a high-res PNG
- *
- * Why "use client":
- * - We use React state/hooks and run browser-only logic (exporting a DOM node to an image)
  */
 
 import { useRef, useState } from "react";
 import SearchAutocomplete from "@/components/SearchAutocomplete";
 
+const TRANSPARENT_PX =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2NgYGD4DwABBgEAf0cpmQAAAABJRU5ErkJggg==";
+
 type MovieCard = {
-  /** Display title (we render "Title (Year)" when available) */
-  title: string;
-  /** Poster URL (TMDb image base or a placeholder) */
-  poster: string;
-  /** TMDb vote_average, range: 0–10 (we convert to stars/5) */
-  rating: number;
+  title: string;   // Display title
+  poster: string;  // Poster URL
+  rating: number;  // TMDb vote_average (0–10)
 };
 
+// ---- helpers: safe string handling ----
+const safeTrim = (v: unknown) =>
+  typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim();
+
 export default function Home() {
-  /**
-   * Movies UI state:
-   * - Initialize 9 placeholders so the grid renders immediately
-   * - When user clicks "Generate", we fill each cell with real data
-   */
+  // 9 placeholders
   const [movies, setMovies] = useState<MovieCard[]>(
     Array.from({ length: 9 }, (_, i) => ({
       title: `Movie ${i + 1}`,
@@ -39,41 +30,32 @@ export default function Home() {
     }))
   );
 
-  /**
-   * Inputs state: 9 text boxes (one per slot).
-   * You type movie names here, then click "Generate" to fetch posters/ratings.
-   */
+  // 9 inputs
   const [inputs, setInputs] = useState<string[]>(Array(9).fill(""));
 
-  /** Editable big title shown above the grid and exported into the image */
+  // big title
   const [title, setTitle] = useState("2024 Favorites");
 
-  /** A ref to the grid container we will export as PNG */
+  // export target
   const gridRef = useRef<HTMLDivElement>(null);
 
-  /** Busy flag (disable buttons, show feedback) */
+  // busy flag
   const [busy, setBusy] = useState(false);
 
-  /** Update a single input field */
   function handleInputChange(index: number, value: string) {
     const next = [...inputs];
     next[index] = value;
     setInputs(next);
   }
 
-  /**
-   * Fetch data for all 9 inputs (sequential & simple for MVP).
-   * For each non-empty query:
-   *   - GET /api/search?q=Title
-   *   - Replace the corresponding grid cell with real title/poster/rating
-   */
+  // fetch 9 movies
   async function handleGenerate() {
     setBusy(true);
     try {
       const next = [...movies];
 
       for (let i = 0; i < inputs.length; i++) {
-        const q = inputs[i].trim();
+        const q = safeTrim(inputs[i]); // ← avoid `.trim()` on undefined
         if (!q) continue;
 
         try {
@@ -85,7 +67,7 @@ export default function Home() {
           const data = await res.json();
 
           next[i] = {
-            title: `${data.title}${data.year ? ` (${data.year})` : ""}`,
+            title: `${data.title ?? q}${data.year ? ` (${data.year})` : ""}`,
             poster:
               data.poster ??
               `https://via.placeholder.com/300x450?text=${encodeURIComponent(
@@ -104,39 +86,94 @@ export default function Home() {
     }
   }
 
-  /**
-   * Export the grid container to a PNG using html-to-image.
-   * We dynamically import the library inside the handler to avoid SSR issues.
-   */
+
+
+  // export as PNG (hardened)
   async function handleExport() {
-    if (!gridRef.current) return;
+    const node = gridRef.current;
+    if (!node) return;
+
+    // 可选：防御容器尺寸为 0 的情况
+    const box = node.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) {
+      alert("Export target has zero size.");
+      return;
+    }
+
     setBusy(true);
     try {
-      // Dynamic import: only runs in the browser (prevents SSR bundling errors)
-      const htmlToImage = await import("html-to-image");
-
-      // Increase pixelRatio for a sharper export (2x looks good for social sharing)
-      const dataUrl = await htmlToImage.toPng(gridRef.current, {
-        pixelRatio: 2,
-        cacheBust: true,
-        // Match our page background to avoid transparent edges
-        backgroundColor: "#000000",
+      // 1) 规范所有图片的跨域属性 + 预加载
+      const imgs = Array.from(node.querySelectorAll("img"));
+      imgs.forEach((img) => {
+        if (!img.crossOrigin) img.crossOrigin = "anonymous";
+        // ts-expect-error firefox/ts 不识别也没关系
+        if (!img.referrerPolicy) img.referrerPolicy = "no-referrer";
       });
 
-      // Trigger a simple client-side download
+      // 等待图片加载；失败则替换为透明像素，避免导出中断
+      await Promise.all(
+        imgs.map((img) =>
+          // decode 更准确；不支持时退回 onload
+          (img as any).decode
+            ? img
+              .decode()
+              .catch(() => {
+                img.src = TRANSPARENT_PX;
+              })
+            : new Promise<void>((res) => {
+              if (img.complete) return res();
+              img.onload = () => res();
+              img.onerror = () => {
+                img.src = TRANSPARENT_PX;
+                res();
+              };
+            })
+        )
+      );
+
+      // 2) 执行导出（带占位、跳过字体）
+      const htmlToImage = await import("html-to-image");
+      let dataUrl: string;
+
+      try {
+        dataUrl = await htmlToImage.toPng(node, {
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: "#000000",
+          skipFonts: true,
+          imagePlaceholder: TRANSPARENT_PX,
+        });
+      } catch (err) {
+        console.warn("[export] toPng failed, fallback toJpeg:", err);
+        dataUrl = await htmlToImage.toJpeg(node, {
+          pixelRatio: 2,
+          cacheBust: true,
+          backgroundColor: "#000000",
+          skipFonts: true,
+          imagePlaceholder: TRANSPARENT_PX,
+          quality: 0.95,
+        });
+      }
+
+      // 3) 下载
       const a = document.createElement("a");
+      const fileSafe =
+        (typeof title === "string" ? title : "movie-grid")
+          .trim()
+          .replace(/[^\w\-]+/g, "_") || "movie-grid";
       a.href = dataUrl;
-      a.download = "my-top-9-movies.png";
+      a.download = `${fileSafe}.png`;
       a.click();
     } catch (e) {
-      console.error(e);
-      alert("Export failed. Check console for details.");
+      console.error("[export] failed:", e, typeof e, e && (e as any).message);
+      alert("Export failed. See console for details.");
     } finally {
       setBusy(false);
     }
   }
 
-  /** Convert TMDb rating (0–10) into 0–5 stars (rounded to nearest integer) */
+
+  /** Convert TMDb rating (0–10) into 0–5 stars (rounded) */
   function starsFromRating(r: number) {
     return Math.round(r / 2);
   }
@@ -145,7 +182,7 @@ export default function Home() {
     <main className="min-h-screen bg-black text-white flex flex-col items-center p-8">
       {/* ===== Control Header (NOT exported) ===== */}
       <div className="w-full max-w-5xl flex flex-col items-center gap-4 mb-6">
-        {/* Big title editor (controls the big title rendered inside the grid) */}
+        {/* Big title editor */}
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -153,7 +190,7 @@ export default function Home() {
           className="w-full text-center text-4xl md:text-6xl font-extrabold bg-transparent outline-none border-b border-white/20 pb-2"
         />
 
-        {/* Buttons: high-contrast, rounded, visible on dark background */}
+        {/* Buttons */}
         <div className="flex flex-wrap gap-3">
           <button
             onClick={handleGenerate}
@@ -175,28 +212,29 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ===== Inputs Area (9 searchable selects) ===== */}
+      {/* ===== Inputs Area ===== */}
       <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-8">
         {Array.from({ length: 9 }).map((_, idx) => (
           <div key={idx}>
             <SearchAutocomplete
               placeholder={`Movie ${idx + 1}`}
               onSelect={(movie) => {
-                // 选中候选后，把标题写回 inputs[idx]
                 handleInputChange(idx, movie.title);
-                // （可选）立刻把该格子的卡片也更新海报：取消注释即可
+                // （可选）立即更新该格卡片
                 // setMovies((prev) => {
                 //   const next = [...prev];
                 //   next[idx] = {
                 //     title: movie.title,
-                //     poster: movie.poster_url ?? `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`,
+                //     poster:
+                //       movie.poster_url ??
+                //       `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`,
                 //     rating: 0,
                 //   };
                 //   return next;
                 // });
               }}
             />
-            {inputs[idx] && (
+            {safeTrim(inputs[idx]) && (
               <p className="mt-1 px-1 text-xs text-white/60">
                 Selected: {inputs[idx]}
               </p>
@@ -205,10 +243,9 @@ export default function Home() {
         ))}
       </div>
 
-
-      {/* ===== Exportable Grid (everything inside ref will be in the PNG) ===== */}
+      {/* ===== Exportable Grid ===== */}
       <div ref={gridRef} className="w-full max-w-5xl">
-        {/* Big display title that appears in the exported image */}
+        {/* Big display title */}
         <h1 className="text-center text-5xl md:text-7xl font-extrabold mb-6">
           {title}
         </h1>
@@ -222,23 +259,23 @@ export default function Home() {
                 key={idx}
                 className="bg-neutral-900 rounded-2xl overflow-hidden shadow-lg flex flex-col items-center p-4"
               >
-                {/* 海报，缩小到 70%，居中 */}
+                {/* 海报（70%缩放，保持完整） */}
                 <div className="w-full aspect-[2/3] bg-black flex items-center justify-center">
                   <img
                     src={m.poster}
                     alt={m.title}
+                    crossOrigin="anonymous"
+                    referrerPolicy="no-referrer"
                     className="max-w-[100%] max-h-[100%] object-contain"
                   />
                 </div>
 
-                {/* 信息区：海报下方 */}
+                {/* 信息区 */}
                 <div className="mt-3 flex flex-col items-center justify-center text-center">
-                  {/* 标题 */}
                   <p className="text-base font-extrabold leading-tight mb-1 break-words whitespace-normal">
                     {m.title}
                   </p>
 
-                  {/* TMDb 评分 */}
                   <p className="text-white/70 text-xs mb-1">
                     {m.rating ? `TMDb: ${m.rating.toFixed(1)}/10` : "No rating"}
                   </p>
@@ -250,7 +287,7 @@ export default function Home() {
                         key={n}
                         xmlns="http://www.w3.org/2000/svg"
                         viewBox="0 0 20 20"
-                        fill={n <= Math.round(m.rating / 2) ? "#2DBD6E" : "gray"}
+                        fill={n <= stars ? "#2DBD6E" : "gray"}
                         className="w-4 h-4"
                       >
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.785.57-1.84-.197-1.54-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -263,7 +300,7 @@ export default function Home() {
           })}
         </div>
 
-        {/* TMDb attribution – required for free API usage */}
+        {/* TMDb attribution */}
         <p className="text-center text-xs text-white/40 mt-6">
           This product uses the TMDb API but is not endorsed by TMDb.
         </p>
@@ -271,3 +308,4 @@ export default function Home() {
     </main>
   );
 }
+
