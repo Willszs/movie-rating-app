@@ -14,6 +14,7 @@
  */
 
 import { useRef, useState } from "react";
+import SearchAutocomplete from "@/components/SearchAutocomplete";
 
 type MovieCard = {
   /** Display title (we render "Title (Year)" when available) */
@@ -174,20 +175,36 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ===== Inputs Area (9 boxes, easy to see on dark bg) ===== */}
+      {/* ===== Inputs Area (9 searchable selects) ===== */}
       <div className="w-full max-w-5xl grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-8">
-        {inputs.map((val, idx) => (
-          <input
-            key={idx}
-            value={val}
-            onChange={(e) => handleInputChange(idx, e.target.value)}
-            placeholder={`Movie ${idx + 1}`}
-            className="rounded-xl px-4 py-3 bg-transparent text-white caret-white
-             placeholder:text-white/60 border border-white/30
-             focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
-          />
+        {Array.from({ length: 9 }).map((_, idx) => (
+          <div key={idx}>
+            <SearchAutocomplete
+              placeholder={`Movie ${idx + 1}`}
+              onSelect={(movie) => {
+                // 选中候选后，把标题写回 inputs[idx]
+                handleInputChange(idx, movie.title);
+                // （可选）立刻把该格子的卡片也更新海报：取消注释即可
+                // setMovies((prev) => {
+                //   const next = [...prev];
+                //   next[idx] = {
+                //     title: movie.title,
+                //     poster: movie.poster_url ?? `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`,
+                //     rating: 0,
+                //   };
+                //   return next;
+                // });
+              }}
+            />
+            {inputs[idx] && (
+              <p className="mt-1 px-1 text-xs text-white/60">
+                Selected: {inputs[idx]}
+              </p>
+            )}
+          </div>
         ))}
       </div>
+
 
       {/* ===== Exportable Grid (everything inside ref will be in the PNG) ===== */}
       <div ref={gridRef} className="w-full max-w-5xl">
