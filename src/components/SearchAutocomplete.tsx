@@ -63,25 +63,45 @@ export default function SearchAutocomplete({
 
         if (Array.isArray(data?.results)) {
           // TMDb 原始结构：{ results: [...] }
-          mapped = data.results.slice(0, 10).map((m: any) => ({
-            id: m.id ?? `${m.title ?? m.name}-${m.release_date ?? ""}`,
-            title: m.title ?? m.name ?? "",
-            release_date: m.release_date,
-            poster_url: m.poster_path
-              ? `https://image.tmdb.org/t/p/w185${m.poster_path}`
-              : null,
-          }));
-        } else if (data && (data.title || data.poster || data.rating !== undefined)) {
+          mapped = data.results.slice(0, 10).map((m: unknown) => {
+            const movie = m as {
+              id?: number | string;
+              title?: string;
+              name?: string;
+              release_date?: string;
+              poster_path?: string | null;
+            };
+            return {
+              id: movie.id ?? `${movie.title ?? movie.name}-${movie.release_date ?? ""}`,
+              title: movie.title ?? movie.name ?? "",
+              release_date: movie.release_date,
+              poster_url: movie.poster_path
+                ? `https://image.tmdb.org/t/p/w185${movie.poster_path}`
+                : null,
+            };
+          });
+        } else if (
+          data &&
+          (data as { title?: string; poster?: string | null; rating?: number }).title
+        ) {
           // 你的接口单对象：{ title, year, poster, rating }
+          const movie = data as {
+            id?: number | string;
+            title?: string;
+            year?: string;
+            poster?: string | null;
+            rating?: number;
+          };
           mapped = [
             {
-              id: data.id ?? `${data.title}-${data.year ?? ""}`,
-              title: data.title ?? "",
-              release_date: data.year ? `${data.year}-01-01` : undefined,
-              poster_url: data.poster ?? null, // 可能已是完整 URL
+              id: movie.id ?? `${movie.title}-${movie.year ?? ""}`,
+              title: movie.title ?? "",
+              release_date: movie.year ? `${movie.year}-01-01` : undefined,
+              poster_url: movie.poster ?? null, // 可能已是完整 URL
             },
           ];
         }
+
 
         if (!cancelled) {
           setItems(mapped);
@@ -180,9 +200,8 @@ export default function SearchAutocomplete({
                     onMouseEnter={() => setActiveIndex(idx)}
                     onMouseDown={(e) => e.preventDefault()} // 防止 input 失焦
                     onClick={() => handleSelect(m)}
-                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${
-                      isActive ? "bg-gray-100" : ""
-                    }`}
+                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${isActive ? "bg-gray-100" : ""
+                      }`}
                   >
                     {/* 缩略图（w185），需要时可改成 w342 */}
                     {m.poster_url ? (
