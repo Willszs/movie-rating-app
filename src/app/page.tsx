@@ -182,7 +182,9 @@ export default function Home() {
             value={val}
             onChange={(e) => handleInputChange(idx, e.target.value)}
             placeholder={`Movie ${idx + 1}`}
-            className="rounded-xl px-4 py-3 text-black outline-none border border-gray-300 focus:ring-2 focus:ring-emerald-400"
+            className="rounded-xl px-4 py-3 bg-transparent text-white caret-white
+             placeholder:text-white/60 border border-white/30
+             focus:ring-2 focus:ring-emerald-400 focus:border-emerald-500 outline-none"
           />
         ))}
       </div>
