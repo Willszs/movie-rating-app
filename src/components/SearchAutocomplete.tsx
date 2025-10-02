@@ -3,16 +3,20 @@ import { useEffect, useRef, useState } from "react";
 
 type Movie = {
   id: string | number;
-  title: string;
+  title: string;          // 可能带 (YYYY)
   release_date?: string;
-  poster_url?: string | null; // 统一成完整 URL，方便直接 img 显示
+  poster?: string | null; // 和后端统一
 };
 
 type Props = {
   onSelect: (movie: Movie) => void;
   placeholder?: string;
-  minChars?: number; // 触发搜索的最少字符数
+  minChars?: number;
 };
+
+function stripYear(title: string): string {
+  return title.replace(/\s*\(\d{4}\)\s*$/, "");
+}
 
 export default function SearchAutocomplete({
   onSelect,
@@ -28,14 +32,14 @@ export default function SearchAutocomplete({
   const boxRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // --- 简单防抖 ---
+  // 防抖
   const [debounced, setDebounced] = useState(query);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 250);
     return () => clearTimeout(t);
   }, [query]);
 
-  // --- 点击外部关闭 ---
+  // 点击外面关闭
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
@@ -44,7 +48,7 @@ export default function SearchAutocomplete({
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  // --- 拉取候选（兼容两种返回结构） ---
+  // 拉取候选（使用 results 数组）
   useEffect(() => {
     const q = debounced.trim();
     if (q.length < minChars) {
@@ -60,48 +64,14 @@ export default function SearchAutocomplete({
         const data = await res.json();
 
         let mapped: Movie[] = [];
-
         if (Array.isArray(data?.results)) {
-          // TMDb 原始结构：{ results: [...] }
-          mapped = data.results.slice(0, 10).map((m: unknown) => {
-            const movie = m as {
-              id?: number | string;
-              title?: string;
-              name?: string;
-              release_date?: string;
-              poster_path?: string | null;
-            };
-            return {
-              id: movie.id ?? `${movie.title ?? movie.name}-${movie.release_date ?? ""}`,
-              title: movie.title ?? movie.name ?? "",
-              release_date: movie.release_date,
-              poster_url: movie.poster_path
-                ? `https://image.tmdb.org/t/p/w185${movie.poster_path}`
-                : null,
-            };
-          });
-        } else if (
-          data &&
-          (data as { title?: string; poster?: string | null; rating?: number }).title
-        ) {
-          // 你的接口单对象：{ title, year, poster, rating }
-          const movie = data as {
-            id?: number | string;
-            title?: string;
-            year?: string;
-            poster?: string | null;
-            rating?: number;
-          };
-          mapped = [
-            {
-              id: movie.id ?? `${movie.title}-${movie.year ?? ""}`,
-              title: movie.title ?? "",
-              release_date: movie.year ? `${movie.year}-01-01` : undefined,
-              poster_url: movie.poster ?? null, // 可能已是完整 URL
-            },
-          ];
+          mapped = data.results.slice(0, 10).map((movie: any) => ({
+            id: movie.id ?? `${movie.title}-${movie.release_date ?? ""}`,
+            title: movie.title ?? "",
+            release_date: movie.release_date ?? undefined,
+            poster: movie.poster ?? null, // 后端已拼好完整 URL
+          }));
         }
-
 
         if (!cancelled) {
           setItems(mapped);
@@ -123,7 +93,7 @@ export default function SearchAutocomplete({
     };
   }, [debounced, minChars]);
 
-  // --- 键盘导航 ---
+  // 键盘导航
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open || !items.length) return;
     if (e.key === "ArrowDown") {
@@ -149,12 +119,11 @@ export default function SearchAutocomplete({
     if (!list) return;
     const li = list.children[activeIndex] as HTMLElement | undefined;
     li?.scrollIntoView({ block: "nearest" });
-    // 上面这行能避免上下键时选中项跑出可视区
   }
 
   function handleSelect(m: Movie) {
     onSelect(m);
-    setQuery(m.title);
+    setQuery(stripYear(m.title)); // 输入框写回纯标题
     setOpen(false);
   }
 
@@ -198,18 +167,12 @@ export default function SearchAutocomplete({
                     role="option"
                     aria-selected={isActive}
                     onMouseEnter={() => setActiveIndex(idx)}
-                    onMouseDown={(e) => e.preventDefault()} // 防止 input 失焦
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleSelect(m)}
-                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${isActive ? "bg-gray-100" : ""
-                      }`}
+                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${isActive ? "bg-gray-100" : ""}`}
                   >
-                    {/* 缩略图（w185），需要时可改成 w342 */}
-                    {m.poster_url ? (
-                      <img
-                        src={m.poster_url}
-                        alt=""
-                        className="h-16 w-12 rounded object-cover"
-                      />
+                    {m.poster ? (
+                      <img src={m.poster} alt="" className="h-16 w-12 rounded object-cover" />
                     ) : (
                       <div className="h-16 w-12 rounded bg-gray-200" />
                     )}
@@ -232,4 +195,6 @@ export default function SearchAutocomplete({
     </div>
   );
 }
+
+
 
