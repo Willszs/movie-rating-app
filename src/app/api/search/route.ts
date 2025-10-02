@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 
-// 支持两种方式：
-// 1. V3 API Key:  短的32字符 key
-// 2. V4 Token:   很长的一串 JWT (Bearer token)
-
 const V3 = process.env.TMDB_API_KEY;
 const V4 = process.env.TMDB_BEARER;
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q");
-
-  if (!query) {
-    return NextResponse.json({ error: "Missing query" }, { status: 400 });
-  }
+  const page = searchParams.get("page") || "1";
+  const single = searchParams.get("single") === "1";
+  const id = searchParams.get("id"); // ✅ 新增：按 TMDb 电影 ID 精确查
 
   if (!V3 && !V4) {
     return NextResponse.json(
@@ -22,41 +17,92 @@ export async function GET(req: Request) {
     );
   }
 
-  // 构造 URL，不同鉴权方式有差异
-  const url = V4
-    ? `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(
-        query
-      )}&language=en-US`
-    : `https://api.themoviedb.org/3/search/movie?api_key=${V3}&query=${encodeURIComponent(
-        query
-      )}&language=en-US`;
+  // ====== 精确查询：/api/search?id=12345 ======
+  if (id) {
+    const url = `https://api.themoviedb.org/3/movie/${encodeURIComponent(id)}?language=en-US`;
+    const resp = await fetch(url, {
+      headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
+      cache: "no-store",
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      return NextResponse.json(
+        { error: "TMDb movie lookup failed", status: resp.status, body: body.slice(0, 200) },
+        { status: 502 }
+      );
+    }
+    const r = await resp.json();
+    const year = r.release_date ? r.release_date.slice(0, 4) : "";
+    const obj = {
+      id: r.id,
+      title: year ? `${r.title} (${year})` : r.title,
+      year,
+      poster: r.poster_path ? `https://image.tmdb.org/t/p/w342${r.poster_path}` : null,
+      rating: typeof r.vote_average === "number" ? r.vote_average : 0,
+      release_date: r.release_date ?? null,
+      poster_path: r.poster_path ?? null,
+      vote_average: r.vote_average ?? null,
+    };
+    return NextResponse.json(obj); // 精确返回单对象
+  }
 
-  // V4 需要 Authorization header，V3 不需要
+  // ====== 关键词搜索：/api/search?q=xxx[&single=1] ======
+  if (!query) {
+    return NextResponse.json({ error: "Missing query" }, { status: 400 });
+  }
+
+  const url = V4
+    ? `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=${page}`
+    : `https://api.themoviedb.org/3/search/movie?api_key=${V3}&query=${encodeURIComponent(query)}&include_adult=false&language=en-US&page=${page}`;
+
   const resp = await fetch(url, {
     headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
+    cache: "no-store",
   });
 
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
     return NextResponse.json(
-      { error: "TMDb request failed", status: resp.status, body: body.slice(0, 200) },
+      { error: "TMDb search failed", status: resp.status, body: body.slice(0, 200) },
       { status: 502 }
     );
   }
 
   const data = await resp.json();
-  const result = data.results?.[0];
-  if (!result) {
-    return NextResponse.json({ error: "No result" }, { status: 404 });
+
+  const results = (data.results || [])
+    .filter((r: any) => !!r.title)
+    .map((r: any) => {
+      const year = r.release_date ? r.release_date.slice(0, 4) : "";
+      return {
+        id: r.id,
+        title: year ? `${r.title} (${year})` : r.title,
+        year,
+        poster: r.poster_path ? `https://image.tmdb.org/t/p/w342${r.poster_path}` : null,
+        rating: typeof r.vote_average === "number" ? r.vote_average : 0,
+        release_date: r.release_date ?? null,
+        poster_path: r.poster_path ?? null,
+        vote_average: r.vote_average ?? null,
+      };
+    });
+
+  if (single) {
+    const first = results[0];
+    if (!first) return NextResponse.json({ error: "No result" }, { status: 404 });
+    return NextResponse.json(first);
   }
 
   return NextResponse.json({
-    title: result.title,
-    year: result.release_date?.slice(0, 4),
-    poster: result.poster_path
-      ? `https://image.tmdb.org/t/p/w500${result.poster_path}`
-      : null,
-    rating: result.vote_average, // 0–10
+    page: data.page ?? 1,
+    total_pages: data.total_pages ?? 1,
+    results,
   });
 }
+
+
+
+
+
+
+
 
