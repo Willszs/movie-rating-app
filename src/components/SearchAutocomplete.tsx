@@ -1,19 +1,32 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
+/**
+ * Lightweight movie shape coming from your own /api/search.
+ * NOTE:
+ * - `title` is already normalized (e.g., "Inception (2010)").
+ * - `poster` is a full URL string or null; do NOT build from poster_path here.
+ */
 type Movie = {
   id: string | number;
-  title: string;          // 可能带 (YYYY)
-  release_date?: string;
-  poster?: string | null; // 和后端统一
+  title: string;           // may include "(YYYY)" suffix
+  release_date?: string;   // ISO "YYYY-MM-DD" from API (optional)
+  poster?: string | null;  // full URL or null (already normalized by backend)
 };
 
 type Props = {
+  /** Callback fired when the user picks an item from the list */
   onSelect: (movie: Movie) => void;
+  /** Input placeholder text */
   placeholder?: string;
+  /** Minimum characters to start searching (default: 2) */
   minChars?: number;
 };
 
+/**
+ * Remove a trailing "(YYYY)" from a movie title.
+ * Displaying a pure title in the input often feels cleaner.
+ */
 function stripYear(title: string): string {
   return title.replace(/\s*\(\d{4}\)\s*$/, "");
 }
@@ -23,23 +36,31 @@ export default function SearchAutocomplete({
   placeholder = "Type a movie name…",
   minChars = 2,
 }: Props) {
+  // ---------------------------------------------------------------------------
+  // Local UI state
+  // ---------------------------------------------------------------------------
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<Movie[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
 
+  // Refs for outside-click detection and active item scrolling
   const boxRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
-  // 防抖
+  // ---------------------------------------------------------------------------
+  // Debounce user input to avoid firing too many network requests
+  // ---------------------------------------------------------------------------
   const [debounced, setDebounced] = useState(query);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query), 250);
     return () => clearTimeout(t);
   }, [query]);
 
-  // 点击外面关闭
+  // ---------------------------------------------------------------------------
+  // Close the dropdown when clicking outside the component
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!boxRef.current?.contains(e.target as Node)) setOpen(false);
@@ -48,7 +69,12 @@ export default function SearchAutocomplete({
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
 
-  // 拉取候选（使用 results 数组）
+  // ---------------------------------------------------------------------------
+  // Fetch suggestions from /api/search when debounced query changes
+  // The backend returns a paginated structure:
+  //   { page, total_pages, results: [{ id, title, poster, release_date, ... }] }
+  // We only need the top ~10 for the dropdown.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     const q = debounced.trim();
     if (q.length < minChars) {
@@ -56,11 +82,25 @@ export default function SearchAutocomplete({
       setOpen(false);
       return;
     }
+
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+          cache: "no-store", // always get fresh results
+        });
+        if (!res.ok) {
+          // If server returns error JSON, we still gracefully handle it
+          // by clearing items and showing "No results".
+          if (!cancelled) {
+            setItems([]);
+            setOpen(true);
+            setActiveIndex(-1);
+          }
+          return;
+        }
+
         const data = await res.json();
 
         let mapped: Movie[] = [];
@@ -69,7 +109,7 @@ export default function SearchAutocomplete({
             id: movie.id ?? `${movie.title}-${movie.release_date ?? ""}`,
             title: movie.title ?? "",
             release_date: movie.release_date ?? undefined,
-            poster: movie.poster ?? null, // 后端已拼好完整 URL
+            poster: movie.poster ?? null, // already full URL from backend
           }));
         }
 
@@ -88,14 +128,21 @@ export default function SearchAutocomplete({
         if (!cancelled) setLoading(false);
       }
     })();
+
     return () => {
       cancelled = true;
     };
   }, [debounced, minChars]);
 
-  // 键盘导航
+  // ---------------------------------------------------------------------------
+  // Keyboard navigation for the suggestion list
+  // ArrowDown/ArrowUp: move active index
+  // Enter: select active item
+  // Escape: close dropdown
+  // ---------------------------------------------------------------------------
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open || !items.length) return;
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActiveIndex((i) => (i + 1) % items.length);
@@ -114,6 +161,7 @@ export default function SearchAutocomplete({
     }
   }
 
+  // Ensure the active list item is visible inside the scroll container
   function scrollActiveIntoView() {
     const list = listRef.current;
     if (!list) return;
@@ -121,14 +169,19 @@ export default function SearchAutocomplete({
     li?.scrollIntoView({ block: "nearest" });
   }
 
+  // Called when the user selects an item (mouse or keyboard)
   function handleSelect(m: Movie) {
-    onSelect(m);
-    setQuery(stripYear(m.title)); // 输入框写回纯标题
+    onSelect(m);                   // notify parent
+    setQuery(stripYear(m.title));  // reflect a pure title in the input
     setOpen(false);
   }
 
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div ref={boxRef} className="relative w-full">
+      {/* Text input acting as a combobox for movie search */}
       <input
         value={query}
         onChange={(e) => {
@@ -138,20 +191,25 @@ export default function SearchAutocomplete({
         onFocus={() => query.trim().length >= minChars && setOpen(true)}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls="movie-suggestions"
         className="w-full rounded-xl border border-white/30 bg-transparent px-4 py-3 text-white placeholder:text-white/60 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400"
       />
 
+      {/* Dropdown panel */}
       {open && (
         <div className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border bg-white shadow-lg">
+          {/* Loading state */}
           {loading && <div className="p-3 text-sm text-gray-500">Searching…</div>}
 
+          {/* Empty state */}
           {!loading && items.length === 0 && (
             <div className="p-3 text-sm text-gray-500">No results</div>
           )}
 
+          {/* Results list */}
           {!loading && items.length > 0 && (
             <ul
               id="movie-suggestions"
@@ -167,16 +225,27 @@ export default function SearchAutocomplete({
                     role="option"
                     aria-selected={isActive}
                     onMouseEnter={() => setActiveIndex(idx)}
+                    // Prevent input blur on mousedown so click registers properly
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleSelect(m)}
-                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${isActive ? "bg-gray-100" : ""}`}
+                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${
+                      isActive ? "bg-gray-100" : ""
+                    }`}
                   >
+                    {/* Poster thumbnail (already full URL or null) */}
                     {m.poster ? (
-                      <img src={m.poster} alt="" className="h-16 w-12 rounded object-cover" />
+                      <img
+                        src={m.poster}
+                        alt=""
+                        className="h-16 w-12 rounded object-cover"
+                        crossOrigin="anonymous"
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
                       <div className="h-16 w-12 rounded bg-gray-200" />
                     )}
 
+                    {/* Title + Year (year is derived from release_date for compact display) */}
                     <div className="min-w-0">
                       <div className="truncate font-medium text-gray-900">
                         {m.title}
