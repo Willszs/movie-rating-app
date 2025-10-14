@@ -32,7 +32,6 @@ A Next.js + TypeScript app to search TMDb, pick **9 posters (3×3)** with rating
 ## 🎮 Demo
 
 - **Live**: https://szs-movie-rating-app-lilac.vercel.app/
-- **GIF**: docs/demo.gif
 
 ---
 
@@ -60,7 +59,6 @@ npm i # or yarn / pnpm
 ### 2) Environment
 Create a `.env.local` in the project root:
 TMDB_V4_TOKEN=your_long_bearer_token
-TMDB_IMAGE_BASE=https://image.tmdb.org/t/p
 
 ### 3) Run
 npm run dev # http://localhost:3000
@@ -83,7 +81,6 @@ npm run build && npm start
 | Key               | Example                       | Notes                                  |
 |-------------------|-------------------------------|----------------------------------------|
 | TMDB_V4_TOKEN     | eyJhbGciOiJIUzI1NiJ9...       | Used by `/api/search` (server route)   |
-| TMDB_IMAGE_BASE   | https://image.tmdb.org/t/p    | Image base; adjust sizes as needed     |
 
 Poster size/quality can be tuned in `app/api/search/route.ts` and the grid card component.
 
@@ -106,10 +103,8 @@ Poster size/quality can be tuned in `app/api/search/route.ts` and the grid card 
 
 Upload **UI screenshots** into `docs/` (do not store full poster assets).
 
-- Empty grid — docs/empty-grid.png  
 - Autocomplete — docs/autocomplete.png  
 - Finished collage — docs/finished.png  
-- Exported PNG (result) — docs/export.png
 
 ---
 
