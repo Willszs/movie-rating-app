@@ -52,12 +52,12 @@ A Next.js + TypeScript app to search TMDb, pick **9 posters (3×3)** with rating
 - TMDb v4 Bearer Token
 
 ### 1) Clone & install
-git clone https://github.com/Willszs/movie-rating-app.git
-cd movie-rating-app
-npm i # or yarn / pnpm
+git clone https://github.com/Willszs/movie-rating-app.git  
+cd movie-rating-app  
+npm i # or yarn / pnpm  
 
 ### 2) Environment
-Create a `.env.local` in the project root:
+Create a `.env.local` in the project root:  
 TMDB_V4_TOKEN=your_long_bearer_token
 
 ### 3) Run
