@@ -101,10 +101,8 @@ Poster size/quality can be tuned in `app/api/search/route.ts` and the grid card 
 
 ## 🖼️ Screenshots
 
-Upload **UI screenshots** into `docs/`.
-
-- Autocomplete — docs/autocomplete.png  
-- Finished collage — docs/finished.png  
+- Autocomplete — ![Autocomplete](docs/autocomplete.png)
+- Finished collage — ![Finished collage](docs/finished.png)
 
 ---
 
