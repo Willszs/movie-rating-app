@@ -47,6 +47,8 @@ export default function SearchAutocomplete({
 
   // Refs for outside-click detection and active item scrolling
   const boxRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const justSelected = useRef(false);                 // 用來攔住選中後的那一次搜索/打開
   const listRef = useRef<HTMLUListElement>(null);
 
   // ---------------------------------------------------------------------------
@@ -77,6 +79,13 @@ export default function SearchAutocomplete({
   // ---------------------------------------------------------------------------
   useEffect(() => {
     const q = debounced.trim();
+
+    // 若剛選過 or 已關閉，不發起搜索（避免選中後又打開）
+    if (justSelected.current || !open) {
+      justSelected.current = false; // 消耗標記
+      return;
+    }
+
     if (q.length < minChars) {
       setItems([]);
       setOpen(false);
@@ -87,12 +96,8 @@ export default function SearchAutocomplete({
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
-          cache: "no-store", // always get fresh results
-        });
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
         if (!res.ok) {
-          // If server returns error JSON, we still gracefully handle it
-          // by clearing items and showing "No results".
           if (!cancelled) {
             setItems([]);
             setOpen(true);
@@ -100,18 +105,15 @@ export default function SearchAutocomplete({
           }
           return;
         }
-
         const data = await res.json();
-
-        let mapped: Movie[] = [];
-        if (Array.isArray(data?.results)) {
-          mapped = data.results.slice(0, 10).map((movie: any) => ({
+        const mapped: Movie[] = Array.isArray(data?.results)
+          ? data.results.slice(0, 10).map((movie: any) => ({
             id: movie.id ?? `${movie.title}-${movie.release_date ?? ""}`,
             title: movie.title ?? "",
             release_date: movie.release_date ?? undefined,
-            poster: movie.poster ?? null, // already full URL from backend
-          }));
-        }
+            poster: movie.poster ?? null,
+          }))
+          : [];
 
         if (!cancelled) {
           setItems(mapped);
@@ -129,10 +131,9 @@ export default function SearchAutocomplete({
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [debounced, minChars]);
+    return () => { cancelled = true; };
+  }, [debounced, minChars, open]);
+
 
   // ---------------------------------------------------------------------------
   // Keyboard navigation for the suggestion list
@@ -171,10 +172,15 @@ export default function SearchAutocomplete({
 
   // Called when the user selects an item (mouse or keyboard)
   function handleSelect(m: Movie) {
-    onSelect(m);                   // notify parent
-    setQuery(stripYear(m.title));  // reflect a pure title in the input
-    setOpen(false);
+    onSelect(m);                          // 通知父級
+    justSelected.current = true;          // 標記“剛剛選過”
+    setQuery(stripYear(m.title));         // 如需回填可保留
+    setItems([]);                         // 清空結果，避免再次滿足打開條件
+    setActiveIndex(-1);
+    setOpen(false);                       // 關閉下拉
+    inputRef.current?.blur();             // 主動失焦，防止 onFocus 再打開
   }
+
 
   // ---------------------------------------------------------------------------
   // Render
@@ -183,12 +189,19 @@ export default function SearchAutocomplete({
     <div ref={boxRef} className="relative w-full">
       {/* Text input acting as a combobox for movie search */}
       <input
+        ref={inputRef}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           if (!open) setOpen(true);
         }}
-        onFocus={() => query.trim().length >= minChars && setOpen(true)}
+        onFocus={() => {
+          if (justSelected.current) {         // 避免選中後立刻又被打開
+            justSelected.current = false;
+            return;
+          }
+          if (query.trim().length >= minChars) setOpen(true);
+        }}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         role="combobox"
@@ -197,6 +210,7 @@ export default function SearchAutocomplete({
         aria-controls="movie-suggestions"
         className="w-full rounded-xl border border-white/30 bg-transparent px-4 py-3 text-white placeholder:text-white/60 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-400"
       />
+
 
       {/* Dropdown panel */}
       {open && (
@@ -228,9 +242,8 @@ export default function SearchAutocomplete({
                     // Prevent input blur on mousedown so click registers properly
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => handleSelect(m)}
-                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${
-                      isActive ? "bg-gray-100" : ""
-                    }`}
+                    className={`flex cursor-pointer items-center gap-3 px-3 py-2 ${isActive ? "bg-gray-100" : ""
+                      }`}
                   >
                     {/* Poster thumbnail (already full URL or null) */}
                     {m.poster ? (

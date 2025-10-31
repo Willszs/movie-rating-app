@@ -47,7 +47,8 @@
    - The page component uses Tailwind classes (bg-black/text-white)
      for the main area; globals keep a neutral baseline.
 ------------------------------------------------------------------- */
-html, body {
+html,
+body {
   height: 100%;
 }
 
@@ -69,6 +70,7 @@ img {
 
 /* Optional: smoother focus outlines for keyboard nav */
 :focus-visible {
-  outline: 2px solid rgba(99, 102, 241, 0.8); /* indigo-500-ish */
+  outline: 2px solid rgba(99, 102, 241, 0.8);
+  /* indigo-500-ish */
   outline-offset: 2px;
 }
