@@ -11,5 +11,15 @@ export type AlbumCard = {
   year?: number;
 };
 
+export type BookCard = {
+  id: string;
+  title: string;
+  authors?: string[];
+  cover: string | null;
+  year?: number;
+  isbn?: string;
+};
+
+
 
 export type Selected = { id: number | string } | null;
