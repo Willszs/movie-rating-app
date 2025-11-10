@@ -96,7 +96,7 @@ export default function SearchAutocomplete({
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+        const res = await fetch(`/api/movies?q=${encodeURIComponent(q)}`, { cache: "no-store" });
         if (!res.ok) {
           if (!cancelled) {
             setItems([]);
