@@ -1,6 +1,6 @@
 "use client";
 import React, { useRef, useState } from "react";
-import SearchAutocomplete from "../SearchAutocomplete"; // ← 直接用你现有的电影搜索
+import SearchAutocomplete from "./SearchAutocomplete"; // ← 直接用你现有的电影搜索
 import PosterCard from "./PosterCard";
 import { useExportImage } from "../../hooks/useExportImage";
 import type { MovieCard, Selected } from "../../types";
@@ -39,10 +39,10 @@ export default function MovieGrid() {
                 try {
                     let data: any = null;
                     if (sel && sel.id) {
-                        const res = await fetch(`/api/search?id=${encodeURIComponent(String(sel.id))}`);
+                        const res = await fetch(`/api/movies?id=${encodeURIComponent(String(sel.id))}`);
                         if (res.ok) data = await res.json();
                     } else if (q) {
-                        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&single=1`);
+                        const res = await fetch(`/api/movies?q=${encodeURIComponent(q)}&single=1`);
                         if (res.ok) data = await res.json();
                     } else {
                         continue;
